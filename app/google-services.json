@@ -1,0 +1,42 @@
+{
+  "project_info": {
+    "project_number": "175946716223",
+    "firebase_url": "https://textrecognizer-8bd23.firebaseio.com",
+    "project_id": "textrecognizer-8bd23",
+    "storage_bucket": "textrecognizer-8bd23.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:175946716223:android:9d99916ba6091158",
+        "android_client_info": {
+          "package_name": "com.example.azat.textcapturer"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "175946716223-la8j734bq089ldfama168tnvfchgsnpg.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBnu3dzrJLmYmxufYz5H6q7kBRhJkDfyxU"
+        }
+      ],
+      "services": {
+        "analytics_service": {
+          "status": 1
+        },
+        "appinvite_service": {
+          "status": 1,
+          "other_platform_oauth_client": []
+        },
+        "ads_service": {
+          "status": 2
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
