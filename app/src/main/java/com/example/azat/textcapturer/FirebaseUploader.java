@@ -11,11 +11,13 @@ import com.google.firebase.storage.FirebaseStorage;
 import com.google.firebase.storage.StorageReference;
 import com.google.firebase.storage.UploadTask;
 
-public class FirebaseHelper {
-    private FirebaseStorage mFirebaseStorage;
-    private StorageReference mStorageRootRef;
+import java.util.Date;
 
-    public FirebaseHelper() {
+public class FirebaseUploader {
+    private final FirebaseStorage mFirebaseStorage;
+    private final StorageReference mStorageRootRef;
+
+    public FirebaseUploader() {
         mFirebaseStorage = FirebaseStorage.getInstance();
         mStorageRootRef = mFirebaseStorage.getReference();
     }
@@ -41,7 +43,7 @@ public class FirebaseHelper {
         StorageReference dirRef = mStorageRootRef
                 .child(helper.getUser().getUid())
                 .child(Build.MODEL)
-                .child(RecordingHelper.generateFolderName());
+                .child(new Date().toString());
 
         StorageReference fileRef = dirRef.child("result_text.txt");
         upload(fileRef, data, context);
