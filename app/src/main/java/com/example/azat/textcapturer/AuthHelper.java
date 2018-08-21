@@ -4,6 +4,7 @@ import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
 
 public class AuthHelper {
+
     private FirebaseUser mUser;
 
     public AuthHelper() {
@@ -13,6 +14,4 @@ public class AuthHelper {
     public FirebaseUser getUser() {
         return mUser;
     }
-
-
 }

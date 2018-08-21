@@ -14,6 +14,7 @@ import com.google.firebase.storage.UploadTask;
 import java.util.Date;
 
 public class FirebaseUploader {
+
     private final FirebaseStorage mFirebaseStorage;
     private final StorageReference mStorageRootRef;
 
