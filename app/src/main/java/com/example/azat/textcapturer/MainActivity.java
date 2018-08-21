@@ -65,9 +65,6 @@ public class MainActivity extends Activity {
     // The default behavior in this sample is to start recognition when application is started or
     // resumed. You can turn off this behavior or remove it completely to simplify the application
     private static final boolean START_RECOGNITION_ON_APP_START = true;
-    // Area of interest specified through margin sizes relative to camera preview size
-    private static final int AREA_OF_INTEREST_MARGIN_PERCENT_OF_WIDTH = 4;
-    private static final int AREA_OF_INTEREST_MARGIN_PERCENT_OF_HEIGHT = 25;
     // A subset of available languages shown in the UI. See all available LANGUAGES in Language enum.
     // To show all languages in the UI you can substitute the list below with:
     // Language[] languages = Language.values();
@@ -614,13 +611,9 @@ public class MainActivity extends Activity {
         // there's some confusion with what is width and what is height)
         mSurfaceViewWithOverlay.setScaleX(mSurfaceViewWithOverlay.getWidth(), width);
         mSurfaceViewWithOverlay.setScaleY(mSurfaceViewWithOverlay.getHeight(), height);
-        // Area of interest
-        int marginWidth = (AREA_OF_INTEREST_MARGIN_PERCENT_OF_WIDTH * width) / 100;
-        int marginHeight = (AREA_OF_INTEREST_MARGIN_PERCENT_OF_HEIGHT * height) / 100;
+
         mSurfaceViewWithOverlay.setAreaOfInterest(
-                new Rect(marginWidth, marginHeight, width - marginWidth,
-                         height - marginHeight
-                ));
+                new Rect(0, 0, width, height));
 
         // Start preview
         camera.startPreview();
