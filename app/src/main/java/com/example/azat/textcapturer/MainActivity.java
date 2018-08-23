@@ -5,27 +5,18 @@ package com.example.azat.textcapturer;
 
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
-import android.content.SharedPreferences;
-import android.graphics.Canvas;
 import android.graphics.ImageFormat;
-import android.graphics.Paint;
-import android.graphics.Path;
-import android.graphics.Point;
 import android.graphics.Rect;
-import android.graphics.YuvImage;
 import android.hardware.Camera;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Handler;
-import android.preference.PreferenceManager;
 import android.util.Log;
 import android.view.Display;
 import android.view.Surface;
 import android.view.SurfaceHolder;
-import android.view.SurfaceView;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.AdapterView;
@@ -36,17 +27,16 @@ import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+import com.firebase.ui.auth.AuthUI;
+
 import com.abbyy.mobile.rtr.Engine;
 import com.abbyy.mobile.rtr.IRecognitionService;
 import com.abbyy.mobile.rtr.ITextCaptureService;
 import com.abbyy.mobile.rtr.Language;
-
-import com.firebase.ui.auth.AuthUI;
-
-import java.io.ByteArrayOutputStream;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
 
 public class MainActivity extends Activity {
 
@@ -69,9 +59,9 @@ public class MainActivity extends Activity {
     // To show all languages in the UI you can substitute the list below with:
     // Language[] languages = Language.values();
     private static final Language[] LANGUAGES = {
+            Language.English,
             Language.ChineseSimplified,
             Language.ChineseTraditional,
-            Language.English,
             Language.French,
             Language.German,
             Language.Italian,
@@ -626,8 +616,7 @@ public class MainActivity extends Activity {
 
     // Initialize recognition language spinner in the UI with available languages
     private void initializeRecognitionLanguageSpinner() {
-        final SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(this);
-        final Spinner languageSpinner = (Spinner) findViewById(R.id.recognitionLanguageSpinner);
+        final Spinner languageSpinner = findViewById(R.id.recognitionLanguageSpinner);
 
         // Make the collapsed spinner the size of the selected item
         ArrayAdapter<String> adapter = new ArrayAdapter<String>(MainActivity.this, R.layout.spinner_item) {
@@ -643,29 +632,12 @@ public class MainActivity extends Activity {
             }
         };
 
-        // Stored preference
-        final String recognitionLanguageKey = "RecognitionLanguage";
-        String selectedLanguage = preferences.getString(recognitionLanguageKey, "English");
-
-        // Fill the spinner with available languages selecting the previously chosen language
-        int selectedIndex = -1;
         for (int i = 0; i < LANGUAGES.length; i++) {
             String name = LANGUAGES[i].name();
             adapter.add(name);
-            if (name.equalsIgnoreCase(selectedLanguage)) {
-                selectedIndex = i;
-            }
         }
-        if (selectedIndex == -1) {
-            adapter.insert(selectedLanguage, 0);
-            selectedIndex = 0;
-        }
-
         languageSpinner.setAdapter(adapter);
-
-        if (selectedIndex != -1) {
-            languageSpinner.setSelection(selectedIndex);
-        }
+        languageSpinner.setSelection(0);
 
         // The callback to be called when a language is selected
         languageSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
@@ -677,12 +649,6 @@ public class MainActivity extends Activity {
                     // This is also called when the spinner is first shown
                     mTextCaptureService.setRecognitionLanguage(Language.valueOf(recognitionLanguage));
                     clearRecognitionResults();
-                }
-                if (!preferences.getString(recognitionLanguageKey, "").equalsIgnoreCase(recognitionLanguage)) {
-                    // Store the selection in preferences
-                    SharedPreferences.Editor editor = preferences.edit();
-                    editor.putString(recognitionLanguageKey, recognitionLanguage);
-                    editor.commit();
                 }
             }
 
