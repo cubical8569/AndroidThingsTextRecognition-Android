@@ -27,7 +27,6 @@ import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -38,6 +37,7 @@ import com.abbyy.mobile.rtr.IRecognitionService;
 import com.abbyy.mobile.rtr.ITextCaptureService;
 import com.abbyy.mobile.rtr.Language;
 
+@SuppressWarnings("deprecation")
 public class MainActivity extends Activity {
 
     // Licensing
@@ -310,80 +310,10 @@ public class MainActivity extends Activity {
 
     // Sets camera focus mode and focus area
     private void setCameraFocusMode(String mode) {
-        // Camera sees it as rotated 90 degrees, so there's some confusion with what is width and what is height)
-        int width = 0;
-        int height = 0;
-        int halfCoordinates = 1000;
-        int lengthCoordinates = 2000;
-        Rect area = mSurfaceViewWithOverlay.getAreaOfInterest();
-        switch (mOrientation) {
-            case 0:
-            case 180:
-                height = mCameraPreviewSize.height;
-                width = mCameraPreviewSize.width;
-                break;
-            case 90:
-            case 270:
-                width = mCameraPreviewSize.height;
-                height = mCameraPreviewSize.width;
-                break;
-        }
-
         mCamera.cancelAutoFocus();
+
         Camera.Parameters parameters = mCamera.getParameters();
-        // Set focus and metering area equal to the area of interest. This action is essential because by defaults camera
-        // focuses on the center of the frame, while the area of interest in this sample application is at the top
-        List<Camera.Area> focusAreas = new ArrayList<>();
-        Rect areasRect;
-
-        switch (mOrientation) {
-            case 0:
-                areasRect = new Rect(
-                        -halfCoordinates + area.left * lengthCoordinates / width,
-                        -halfCoordinates + area.top * lengthCoordinates / height,
-                        -halfCoordinates + lengthCoordinates * area.right / width,
-                        -halfCoordinates + lengthCoordinates * area.bottom / height
-                );
-                break;
-            case 180:
-                areasRect = new Rect(
-                        halfCoordinates - area.right * lengthCoordinates / width,
-                        halfCoordinates - area.bottom * lengthCoordinates / height,
-                        halfCoordinates - lengthCoordinates * area.left / width,
-                        halfCoordinates - lengthCoordinates * area.top / height
-                );
-                break;
-            case 90:
-                areasRect = new Rect(
-                        -halfCoordinates + area.top * lengthCoordinates / height,
-                        halfCoordinates - area.right * lengthCoordinates / width,
-                        -halfCoordinates + lengthCoordinates * area.bottom / height,
-                        halfCoordinates - lengthCoordinates * area.left / width
-                );
-                break;
-            case 270:
-                areasRect = new Rect(
-                        halfCoordinates - area.bottom * lengthCoordinates / height,
-                        -halfCoordinates + area.left * lengthCoordinates / width,
-                        halfCoordinates - lengthCoordinates * area.top / height,
-                        -halfCoordinates + lengthCoordinates * area.right / width
-                );
-                break;
-            default:
-                throw new IllegalArgumentException();
-        }
-
-        focusAreas.add(new Camera.Area(areasRect, 800));
-        if (parameters.getMaxNumFocusAreas() >= focusAreas.size()) {
-            parameters.setFocusAreas(focusAreas);
-        }
-        if (parameters.getMaxNumMeteringAreas() >= focusAreas.size()) {
-            parameters.setMeteringAreas(focusAreas);
-        }
-
-        // parameters.setFocusMode( mode );
-
-        // Commit the camera parameters
+        parameters.setFocusMode(mode);
         mCamera.setParameters(parameters);
     }
 
