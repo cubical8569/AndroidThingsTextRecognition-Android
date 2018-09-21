@@ -5,15 +5,10 @@ package com.example.azat.textcapturer;
 
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.graphics.Canvas;
 import android.graphics.ImageFormat;
-import android.graphics.Paint;
-import android.graphics.Path;
-import android.graphics.Point;
 import android.graphics.Rect;
 import android.graphics.YuvImage;
 import android.hardware.Camera;
@@ -25,7 +20,6 @@ import android.util.Log;
 import android.view.Display;
 import android.view.Surface;
 import android.view.SurfaceHolder;
-import android.view.SurfaceView;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.AdapterView;
@@ -43,10 +37,26 @@ import com.abbyy.mobile.rtr.Language;
 
 import com.firebase.ui.auth.AuthUI;
 
+import java.io.BufferedWriter;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+
+import javax.net.ssl.HttpsURLConnection;
+
+import okhttp3.MediaType;
+import okhttp3.MultipartBody;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
+import okio.Buffer;
 
 public class MainActivity extends Activity {
 
@@ -59,9 +69,6 @@ public class MainActivity extends Activity {
 
     ///////////////////////////////////////////////////////////////////////////////
     // Some application settings that can be changed to modify application behavior:
-    // The camera zoom. Optically zooming with a good mCamera often improves results
-    // even at close range and it might be required at longer ranges.
-    private static final int CAMERA_ZOOM = 1;
     // The default behavior in this sample is to start recognition when application is started or
     // resumed. You can turn off this behavior or remove it completely to simplify the application
     private static final boolean START_RECOGNITION_ON_APP_START = true;
@@ -117,6 +124,111 @@ public class MainActivity extends Activity {
     private AuthHelper mAuthHelper;
     private FirebaseUploader mFirebaseUploader;
 
+    private static String bodyToString(final Request request) {
+        try {
+            final Request copy = request.newBuilder().build();
+            final Buffer buffer = new Buffer();
+            copy.body().writeTo(buffer);
+            return buffer.readUtf8();
+        } catch (final IOException e) {
+            return "did not work";
+        }
+    }
+
+    public static class UploadTextTask extends AsyncTask<String, Void, Void> {
+
+        @Override
+        protected Void doInBackground(String... params) {
+
+            URL url;
+            String response = "";
+            String data = params[0];
+
+            try {
+                url = new URL("http://18.223.141.72:8000/upload/upload_text/?message=" + data);
+
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setReadTimeout(15000);
+                conn.setConnectTimeout(15000);
+                conn.setRequestMethod("POST");
+                conn.setDoInput(true);
+                conn.setDoOutput(true);
+
+                OutputStream os = conn.getOutputStream();
+                BufferedWriter writer = new BufferedWriter(
+                        new OutputStreamWriter(os, "UTF-8"));
+
+                writer.flush();
+                writer.close();
+                os.close();
+                int responseCode = conn.getResponseCode();
+
+                conn.disconnect();
+//                if (responseCode == HttpsURLConnection.HTTP_OK) {
+//                    String line;
+//                    BufferedReader br=new BufferedReader(new InputStreamReader(conn.getInputStream()));
+//                    while ((line=br.readLine()) != null) {
+//                        response+=line;
+//                    }
+//                }
+//                else {
+//                    response="";
+//                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+
+            return null;
+        }
+
+        @Override
+        protected void onPostExecute(Void aVoid) {
+            Log.v("TAG", "Uploaded");
+        }
+    }
+
+
+    public static class UploadImageTask extends AsyncTask<Byte[], Void, Void> {
+
+        @Override
+        protected Void doInBackground(Byte[]... params) {
+            OkHttpClient client = new OkHttpClient();
+
+            byte[] bytes = new byte[params[0].length];
+            for (int i = 0; i < bytes.length; ++i) {
+                bytes[i] = params[0][i];
+            }
+
+            RequestBody body_ = new MultipartBody.Builder()
+                    .setType(MultipartBody.FORM)
+                     //.addPart(RequestBody.create(MediaType.parse("image/png"), bytes))
+                    .addFormDataPart("Content-Disposition", "form-data; name=\"file\"; filename=\"file.png\"")
+                    .addFormDataPart("file", "file.jpg",
+                            RequestBody.create(MediaType.parse("image/jpg"), bytes))
+                    .build();
+
+            Request request = new Request.Builder()
+                    .url("http://18.223.141.72:8000/upload/upload_image/")
+                    .put(body_)
+                    .addHeader("Content-Type", MultipartBody.FORM.toString())
+                    .addHeader("Cache-Control", "no-cache")
+                    .build();
+
+            try {
+                Response response = client.newCall(request).execute();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+
+            return null;
+        }
+
+        @Override
+        protected void onPostExecute(Void aVoid) {
+            Log.v("TAG", "Uploaded");
+        }
+    }
+
     // To communicate with the Text Capture Service we will need this callback:
     private ITextCaptureService.Callback textCaptureCallback = new ITextCaptureService.Callback() {
 
@@ -125,7 +237,6 @@ public class MainActivity extends Activity {
             // The service asks to fill the buffer with image data for the latest frame in NV21 format.
             // Delegate this task to the camera. When the buffer is filled we will receive
             // Camera.PreviewCallback.onPreviewFrame (see below)
-            Log.i("TAG", "onRequestLatestFrame()");
             mCamera.addCallbackBuffer(buffer);
         }
 
@@ -137,7 +248,6 @@ public class MainActivity extends Activity {
             // stop when we get stable result. This callback may continue being called for some time
             // even after the service has been stopped while the calls queued to this thread (UI thread)
             // are being processed. Just ignore these calls:
-            Log.i("TAG", "onFrameProcessed()");
 
             if (resultStatus.ordinal() >= 3) {
                 // The result is stable enough to show something to the user
@@ -154,7 +264,6 @@ public class MainActivity extends Activity {
             if (resultStatus == ITextCaptureService.ResultStabilityStatus.Stable
                     && previousResultStatus != ITextCaptureService.ResultStabilityStatus.Stable) {
                 // Stable result has been reached. Stop the service
-                //stopRecognition();
 
                 // Show result to the user. In this sample we whiten screen background and play
                 // the same sound that is used for pressing buttons
@@ -164,10 +273,12 @@ public class MainActivity extends Activity {
                 for (ITextCaptureService.TextLine line : lines) {
                     sb.append(line.Text + "\n");
                 }
-                mFirebaseUploader.uploadResult(sb.toString().getBytes(), mAuthHelper,
-                                               MainActivity.this
-                );
-                mStartButton.playSoundEffect(android.view.SoundEffectConstants.CLICK);
+
+                new UploadTextTask().execute(sb.toString());
+//                mFirebaseUploader.uploadResult(sb.toString().getBytes(), mAuthHelper,
+//                                               MainActivity.this
+//                );
+//                mStartButton.playSoundEffect(android.view.SoundEffectConstants.CLICK);
             }
 
             previousResultStatus = resultStatus;
@@ -207,20 +318,26 @@ public class MainActivity extends Activity {
             // above have been filled. Send it back to the Text Capture Service
 
             // If it's time send frame to a server
-            //            if (mFrameId == 0) {
-            //                YuvImage yuvImage = new YuvImage(data, ImageFormat.NV21,
-            //                        mCameraPreviewSize.width, mCameraPreviewSize.height, null);
-            //                ByteArrayOutputStream os = new ByteArrayOutputStream();
-            //                yuvImage.compressToJpeg(
-            //                        new Rect(0, 0, mCameraPreviewSize.width, mCameraPreviewSize.height),
-            //                        100, os);
-            //                byte[] jpegByteArray = os.toByteArray();
-            //
-            //                mFirebaseUploader.uploadFrame(jpegByteArray, mAuthHelper, MainActivity.this);
-            //            }
-            //
-            //            mFrameId = (mFrameId + 1) % FRAME_UPLOAD_INTERVAL;
-            Log.i("TAG", Integer.toString(++mFrameId));
+            if (mFrameId == 0) {
+                YuvImage yuvImage = new YuvImage(data, ImageFormat.NV21,
+                        mCameraPreviewSize.width, mCameraPreviewSize.height, null);
+                ByteArrayOutputStream os = new ByteArrayOutputStream();
+                yuvImage.compressToJpeg(
+                        new Rect(0, 0, mCameraPreviewSize.width, mCameraPreviewSize.height),
+                        100, os);
+                final byte[] jpegByteArray = os.toByteArray();
+                Byte[] bytes = new Byte[jpegByteArray.length];
+                int i = 0;
+                // Associating Byte array values with bytes. (byte[] to Byte[])
+                for (byte b : jpegByteArray)
+                    bytes[i++] = b;  // Autoboxing.
+
+                new UploadImageTask().execute(bytes);
+                // mFirebaseUploader.uploadFrame(jpegByteArray, mAuthHelper, MainActivity.this);
+            }
+
+            mFrameId = (mFrameId + 1) % FRAME_UPLOAD_INTERVAL;
+
             mTextCaptureService.submitRequestedFrame(data);
         }
     };
@@ -452,12 +569,12 @@ public class MainActivity extends Activity {
             // Troubleshooting for the developer
             Log.e(getString(R.string.app_name), "Error loading ABBYY RTR SDK:", e);
             showStartupError("Could not load some required resource files. Make sure to configure " +
-                                     "'assets' directory in your application and specify correct 'license file name'. See logcat for details.");
+                    "'assets' directory in your application and specify correct 'license file name'. See logcat for details.");
         } catch (Engine.LicenseException e) {
             // Troubleshooting for the developer
             Log.e(getString(R.string.app_name), "Error loading ABBYY RTR SDK:", e);
             showStartupError("License not valid. Make sure you have a valid license file in the " +
-                                     "'assets' directory and specify correct 'license file name' and 'application mFrameId'. See logcat for details.");
+                    "'assets' directory and specify correct 'license file name' and 'application mFrameId'. See logcat for details.");
         } catch (Throwable e) {
             // Troubleshooting for the developer
             Log.e(getString(R.string.app_name), "Error loading ABBYY RTR SDK:", e);
@@ -573,12 +690,8 @@ public class MainActivity extends Activity {
 
         parameters.setPreviewSize(mCameraPreviewSize.width, mCameraPreviewSize.height);
 
-        // Zoom
-        parameters.setZoom(CAMERA_ZOOM);
         // Buffer format. The only currently supported format is NV21
         parameters.setPreviewFormat(ImageFormat.NV21);
-        // Default focus mode
-        // parameters.setFocusMode( Camera.Parameters.FOCUS_MODE_AUTO );
 
         // Done
         camera.setParameters(parameters);
