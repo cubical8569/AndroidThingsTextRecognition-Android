@@ -7,7 +7,6 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.graphics.ImageFormat;
 import android.graphics.Rect;
 import android.graphics.YuvImage;
@@ -15,7 +14,6 @@ import android.hardware.Camera;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Handler;
-import android.preference.PreferenceManager;
 import android.util.Log;
 import android.view.Display;
 import android.view.Surface;
@@ -30,12 +28,15 @@ import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.util.Arrays;
+import java.util.List;
+
+import com.firebase.ui.auth.AuthUI;
+
 import com.abbyy.mobile.rtr.Engine;
 import com.abbyy.mobile.rtr.IRecognitionService;
 import com.abbyy.mobile.rtr.ITextCaptureService;
 import com.abbyy.mobile.rtr.Language;
-
-import com.firebase.ui.auth.AuthUI;
 
 import java.io.BufferedWriter;
 import java.io.ByteArrayOutputStream;
@@ -44,11 +45,6 @@ import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-
-import javax.net.ssl.HttpsURLConnection;
 
 import okhttp3.MediaType;
 import okhttp3.MultipartBody;
@@ -58,6 +54,7 @@ import okhttp3.RequestBody;
 import okhttp3.Response;
 import okio.Buffer;
 
+@SuppressWarnings("deprecation")
 public class MainActivity extends Activity {
 
     // Licensing
@@ -76,9 +73,9 @@ public class MainActivity extends Activity {
     // To show all languages in the UI you can substitute the list below with:
     // Language[] languages = Language.values();
     private static final Language[] LANGUAGES = {
+            Language.English,
             Language.ChineseSimplified,
             Language.ChineseTraditional,
-            Language.English,
             Language.French,
             Language.German,
             Language.Italian,
@@ -437,81 +434,11 @@ public class MainActivity extends Activity {
 
     // Sets camera focus mode and focus area
     private void setCameraFocusMode(String mode) {
-        // Camera sees it as rotated 90 degrees, so there's some confusion with what is width and what is height)
-        int width = 0;
-        int height = 0;
-        int halfCoordinates = 1000;
-        int lengthCoordinates = 2000;
-        Rect area = mSurfaceViewWithOverlay.getAreaOfInterest();
-        switch (mOrientation) {
-            case 0:
-            case 180:
-                height = mCameraPreviewSize.height;
-                width = mCameraPreviewSize.width;
-                break;
-            case 90:
-            case 270:
-                width = mCameraPreviewSize.height;
-                height = mCameraPreviewSize.width;
-                break;
-        }
-
         mCamera.cancelAutoFocus();
-        Camera.Parameters parameters = mCamera.getParameters();
-        // Set focus and metering area equal to the area of interest. This action is essential because by defaults camera
-        // focuses on the center of the frame, while the area of interest in this sample application is at the top
-        List<Camera.Area> focusAreas = new ArrayList<>();
-        Rect areasRect;
 
-        switch (mOrientation) {
-            case 0:
-                areasRect = new Rect(
-                        -halfCoordinates + area.left * lengthCoordinates / width,
-                        -halfCoordinates + area.top * lengthCoordinates / height,
-                        -halfCoordinates + lengthCoordinates * area.right / width,
-                        -halfCoordinates + lengthCoordinates * area.bottom / height
-                );
-                break;
-            case 180:
-                areasRect = new Rect(
-                        halfCoordinates - area.right * lengthCoordinates / width,
-                        halfCoordinates - area.bottom * lengthCoordinates / height,
-                        halfCoordinates - lengthCoordinates * area.left / width,
-                        halfCoordinates - lengthCoordinates * area.top / height
-                );
-                break;
-            case 90:
-                areasRect = new Rect(
-                        -halfCoordinates + area.top * lengthCoordinates / height,
-                        halfCoordinates - area.right * lengthCoordinates / width,
-                        -halfCoordinates + lengthCoordinates * area.bottom / height,
-                        halfCoordinates - lengthCoordinates * area.left / width
-                );
-                break;
-            case 270:
-                areasRect = new Rect(
-                        halfCoordinates - area.bottom * lengthCoordinates / height,
-                        -halfCoordinates + area.left * lengthCoordinates / width,
-                        halfCoordinates - lengthCoordinates * area.top / height,
-                        -halfCoordinates + lengthCoordinates * area.right / width
-                );
-                break;
-            default:
-                throw new IllegalArgumentException();
-        }
-
-        focusAreas.add(new Camera.Area(areasRect, 800));
-        if (parameters.getMaxNumFocusAreas() >= focusAreas.size()) {
-            parameters.setFocusAreas(focusAreas);
-        }
-        if (parameters.getMaxNumMeteringAreas() >= focusAreas.size()) {
-            parameters.setMeteringAreas(focusAreas);
-        }
-
-        // parameters.setFocusMode( mode );
-
-        // Commit the camera parameters
-        mCamera.setParameters(parameters);
+//        Camera.Parameters parameters = mCamera.getParameters();
+//        parameters.setFocusMode(mode);
+//        mCamera.setParameters(parameters);
     }
 
     // Attach the camera to the surface holder, configure the mCamera and start preview
@@ -739,8 +666,7 @@ public class MainActivity extends Activity {
 
     // Initialize recognition language spinner in the UI with available languages
     private void initializeRecognitionLanguageSpinner() {
-        final SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(this);
-        final Spinner languageSpinner = (Spinner) findViewById(R.id.recognitionLanguageSpinner);
+        final Spinner languageSpinner = findViewById(R.id.recognitionLanguageSpinner);
 
         // Make the collapsed spinner the size of the selected item
         ArrayAdapter<String> adapter = new ArrayAdapter<String>(MainActivity.this, R.layout.spinner_item) {
@@ -756,29 +682,12 @@ public class MainActivity extends Activity {
             }
         };
 
-        // Stored preference
-        final String recognitionLanguageKey = "RecognitionLanguage";
-        String selectedLanguage = preferences.getString(recognitionLanguageKey, "English");
-
-        // Fill the spinner with available languages selecting the previously chosen language
-        int selectedIndex = -1;
         for (int i = 0; i < LANGUAGES.length; i++) {
             String name = LANGUAGES[i].name();
             adapter.add(name);
-            if (name.equalsIgnoreCase(selectedLanguage)) {
-                selectedIndex = i;
-            }
         }
-        if (selectedIndex == -1) {
-            adapter.insert(selectedLanguage, 0);
-            selectedIndex = 0;
-        }
-
         languageSpinner.setAdapter(adapter);
-
-        if (selectedIndex != -1) {
-            languageSpinner.setSelection(selectedIndex);
-        }
+        languageSpinner.setSelection(0);
 
         // The callback to be called when a language is selected
         languageSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
@@ -790,12 +699,6 @@ public class MainActivity extends Activity {
                     // This is also called when the spinner is first shown
                     mTextCaptureService.setRecognitionLanguage(Language.valueOf(recognitionLanguage));
                     clearRecognitionResults();
-                }
-                if (!preferences.getString(recognitionLanguageKey, "").equalsIgnoreCase(recognitionLanguage)) {
-                    // Store the selection in preferences
-                    SharedPreferences.Editor editor = preferences.edit();
-                    editor.putString(recognitionLanguageKey, recognitionLanguage);
-                    editor.commit();
                 }
             }
 
