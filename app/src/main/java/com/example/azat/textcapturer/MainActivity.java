@@ -26,12 +26,8 @@ import android.widget.Button;
 import android.widget.RelativeLayout;
 import android.widget.Spinner;
 import android.widget.TextView;
-import android.widget.Toast;
 
-import java.util.Arrays;
-import java.util.List;
-
-import com.firebase.ui.auth.AuthUI;
+import java.time.LocalDateTime;
 
 import com.abbyy.mobile.rtr.Engine;
 import com.abbyy.mobile.rtr.IRecognitionService;
@@ -45,6 +41,8 @@ import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.IntUnaryOperator;
 
 import okhttp3.MediaType;
 import okhttp3.MultipartBody;
@@ -52,7 +50,6 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
-import okio.Buffer;
 
 @SuppressWarnings("deprecation")
 public class MainActivity extends Activity {
@@ -61,8 +58,8 @@ public class MainActivity extends Activity {
     private static final String LICENSE_FILE_NAME = "AbbyyRtrSdk.license";
 
     // Configuring sending frames to server
-    private static final int FRAME_UPLOAD_INTERVAL = 50;
-    private int mFrameId = 0;  // number of frame mod FRAME_UPLOAD_INTERVAL
+    private static final int FRAME_UPLOAD_INTERVAL = 1;
+    private AtomicInteger mFrameId = new AtomicInteger(0);  // number of frame mod FRAME_UPLOAD_INTERVAL
 
     ///////////////////////////////////////////////////////////////////////////////
     // Some application settings that can be changed to modify application behavior:
@@ -118,20 +115,6 @@ public class MainActivity extends Activity {
 
     private IRecognitionService.ResultStabilityStatus previousResultStatus = null;
 
-    private AuthHelper mAuthHelper;
-    private FirebaseUploader mFirebaseUploader;
-
-    private static String bodyToString(final Request request) {
-        try {
-            final Request copy = request.newBuilder().build();
-            final Buffer buffer = new Buffer();
-            copy.body().writeTo(buffer);
-            return buffer.readUtf8();
-        } catch (final IOException e) {
-            return "did not work";
-        }
-    }
-
     public static class UploadTextTask extends AsyncTask<String, Void, Void> {
 
         @Override
@@ -171,6 +154,7 @@ public class MainActivity extends Activity {
 //                else {
 //                    response="";
 //                }
+
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -184,31 +168,36 @@ public class MainActivity extends Activity {
         }
     }
 
+    volatile private static boolean uploading = false;
 
     public static class UploadImageTask extends AsyncTask<Byte[], Void, Void> {
 
+        private static final MultipartBody.Builder body_ = new MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart("Content-Disposition", "form-data; name=\"file\"; filename=\"file.png\"");
+
+        private static final Request.Builder request_ = new Request.Builder()
+                .url("http://18.223.141.72:8000/upload/upload_image/")
+                .addHeader("Content-Type", MultipartBody.FORM.toString())
+                .addHeader("Cache-Control", "no-cache");
+
+        private static final OkHttpClient client = new OkHttpClient();
+
         @Override
-        protected Void doInBackground(Byte[]... params) {
-            OkHttpClient client = new OkHttpClient();
+        protected Void doInBackground(final Byte[]... params) {
 
             byte[] bytes = new byte[params[0].length];
             for (int i = 0; i < bytes.length; ++i) {
                 bytes[i] = params[0][i];
             }
 
-            RequestBody body_ = new MultipartBody.Builder()
-                    .setType(MultipartBody.FORM)
-                     //.addPart(RequestBody.create(MediaType.parse("image/png"), bytes))
-                    .addFormDataPart("Content-Disposition", "form-data; name=\"file\"; filename=\"file.png\"")
+            RequestBody body = body_
                     .addFormDataPart("file", "file.jpg",
                             RequestBody.create(MediaType.parse("image/jpg"), bytes))
                     .build();
 
-            Request request = new Request.Builder()
-                    .url("http://18.223.141.72:8000/upload/upload_image/")
-                    .put(body_)
-                    .addHeader("Content-Type", MultipartBody.FORM.toString())
-                    .addHeader("Cache-Control", "no-cache")
+            Request request = request_
+                    .put(body)
                     .build();
 
             try {
@@ -222,7 +211,8 @@ public class MainActivity extends Activity {
 
         @Override
         protected void onPostExecute(Void aVoid) {
-            Log.v("TAG", "Uploaded");
+            Log.v("TAG", LocalDateTime.now().toString() + " Uploaded");
+            uploading = false;
         }
     }
 
@@ -265,17 +255,12 @@ public class MainActivity extends Activity {
                 // Show result to the user. In this sample we whiten screen background and play
                 // the same sound that is used for pressing buttons
                 // mSurfaceViewWithOverlay.setFillBackground( true );
-                Toast.makeText(MainActivity.this, "Recognized", Toast.LENGTH_SHORT).show();
                 StringBuilder sb = new StringBuilder();
                 for (ITextCaptureService.TextLine line : lines) {
                     sb.append(line.Text + "\n");
                 }
 
                 new UploadTextTask().execute(sb.toString());
-//                mFirebaseUploader.uploadResult(sb.toString().getBytes(), mAuthHelper,
-//                                               MainActivity.this
-//                );
-//                mStartButton.playSoundEffect(android.view.SoundEffectConstants.CLICK);
             }
 
             previousResultStatus = resultStatus;
@@ -315,25 +300,40 @@ public class MainActivity extends Activity {
             // above have been filled. Send it back to the Text Capture Service
 
             // If it's time send frame to a server
-            if (mFrameId == 0) {
-                YuvImage yuvImage = new YuvImage(data, ImageFormat.NV21,
-                        mCameraPreviewSize.width, mCameraPreviewSize.height, null);
-                ByteArrayOutputStream os = new ByteArrayOutputStream();
-                yuvImage.compressToJpeg(
-                        new Rect(0, 0, mCameraPreviewSize.width, mCameraPreviewSize.height),
-                        100, os);
-                final byte[] jpegByteArray = os.toByteArray();
-                Byte[] bytes = new Byte[jpegByteArray.length];
-                int i = 0;
-                // Associating Byte array values with bytes. (byte[] to Byte[])
-                for (byte b : jpegByteArray)
-                    bytes[i++] = b;  // Autoboxing.
+            int value = mFrameId.get();
+            if (value % FRAME_UPLOAD_INTERVAL == 0) {
+                if (uploading) {
+                    mTextCaptureService.submitRequestedFrame(data);
+                    Log.v("TAG " + Integer.toString(value), "Already uploading!");
+                } else {
+                    uploading = true;
 
-                new UploadImageTask().execute(bytes);
-                // mFirebaseUploader.uploadFrame(jpegByteArray, mAuthHelper, MainActivity.this);
+                    LocalDateTime time = LocalDateTime.now();
+                    Log.v("TAG " + Integer.toString(value), time.toString());
+
+                    YuvImage yuvImage = new YuvImage(data, ImageFormat.NV21,
+                            mCameraPreviewSize.width, mCameraPreviewSize.height, null);
+                    ByteArrayOutputStream os = new ByteArrayOutputStream();
+                    yuvImage.compressToJpeg(
+                            new Rect(0, 0, mCameraPreviewSize.width, mCameraPreviewSize.height),
+                            40, os);
+                    final byte[] jpegByteArray = os.toByteArray();
+                    Byte[] bytes = new Byte[jpegByteArray.length];
+                    int i = 0;
+                    // Associating Byte array values with bytes. (byte[] to Byte[])
+                    for (byte b : jpegByteArray)
+                        bytes[i++] = b;  // Autoboxing.
+
+                    new UploadImageTask().execute(bytes);
+                }
             }
 
-            mFrameId = (mFrameId + 1) % FRAME_UPLOAD_INTERVAL;
+            mFrameId.updateAndGet(new IntUnaryOperator() {
+                @Override
+                public int applyAsInt(int i) {
+                    return (i + 1);
+                }
+            });
 
             mTextCaptureService.submitRequestedFrame(data);
         }
@@ -435,10 +435,6 @@ public class MainActivity extends Activity {
     // Sets camera focus mode and focus area
     private void setCameraFocusMode(String mode) {
         mCamera.cancelAutoFocus();
-
-//        Camera.Parameters parameters = mCamera.getParameters();
-//        parameters.setFocusMode(mode);
-//        mCamera.setParameters(parameters);
     }
 
     // Attach the camera to the surface holder, configure the mCamera and start preview
@@ -727,9 +723,9 @@ public class MainActivity extends Activity {
     void init() {
         setContentView(R.layout.activity_main);
         // Retrieve some ui components
-        mWarningTextView = (TextView) findViewById(R.id.warningText);
-        mErrorTextView = (TextView) findViewById(R.id.errorText);
-        mStartButton = (Button) findViewById(R.id.startButton);
+        mWarningTextView = findViewById(R.id.warningText);
+        mErrorTextView = findViewById(R.id.errorText);
+        mStartButton = findViewById(R.id.startButton);
 
         // Initialize the recognition language spinner
         initializeRecognitionLanguageSpinner();
@@ -761,44 +757,18 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         init();
-        mFirebaseUploader = new FirebaseUploader();
-        mAuthHelper = new AuthHelper();
     }
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        Toast.makeText(this, "onCreate", Toast.LENGTH_SHORT).show();
-
-        mAuthHelper = new AuthHelper();
-        if (mAuthHelper.getUser() != null) {
-            init();
-            mFirebaseUploader = new FirebaseUploader();
-            return;
-        }
-
-        List<AuthUI.IdpConfig> providers = Arrays.asList(
-                new AuthUI.IdpConfig.EmailBuilder().build());
-
-        final int RC_SIGN_IN = 123;
-        // Create and launch sign-in intent
-        startActivityForResult(
-                AuthUI.getInstance()
-                        .createSignInIntentBuilder()
-                        .setAvailableProviders(providers)
-                        .build(),
-                RC_SIGN_IN
-        );
+        init();
     }
 
     @Override
     public void onResume() {
         super.onResume();
-        Toast.makeText(this, "onResume()", Toast.LENGTH_SHORT).show();
         // Reinitialize the camera, restart the preview and recognition if required
-        if (mAuthHelper.getUser() == null) {
-            return;
-        }
 
         mStartButton.setEnabled(false);
         clearRecognitionResults();
@@ -811,12 +781,6 @@ public class MainActivity extends Activity {
 
     @Override
     public void onPause() {
-        Toast.makeText(this, "onPause()", Toast.LENGTH_SHORT).show();
-        if (mAuthHelper.getUser() == null) {
-            super.onPause();
-            return;
-        }
-
         // Clear all pending actions
         mHandler.removeCallbacksAndMessages(null);
         // Stop the text capture service
