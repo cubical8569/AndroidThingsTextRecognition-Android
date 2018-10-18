@@ -27,29 +27,15 @@ import android.widget.RelativeLayout;
 import android.widget.Spinner;
 import android.widget.TextView;
 
+import java.io.ByteArrayOutputStream;
 import java.time.LocalDateTime;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.IntUnaryOperator;
 
 import com.abbyy.mobile.rtr.Engine;
 import com.abbyy.mobile.rtr.IRecognitionService;
 import com.abbyy.mobile.rtr.ITextCaptureService;
 import com.abbyy.mobile.rtr.Language;
-
-import java.io.BufferedWriter;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.io.OutputStreamWriter;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.IntUnaryOperator;
-
-import okhttp3.MediaType;
-import okhttp3.MultipartBody;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.RequestBody;
-import okhttp3.Response;
 
 @SuppressWarnings("deprecation")
 public class MainActivity extends Activity {
@@ -113,52 +99,15 @@ public class MainActivity extends Activity {
     private static final String BUTTON_TEXT_STOP = "Stop";
     private static final String BUTTON_TEXT_STARTING = "Starting...";
 
+    private final static Uploader mUploader = new Uploader();
+
     private IRecognitionService.ResultStabilityStatus previousResultStatus = null;
 
     public static class UploadTextTask extends AsyncTask<String, Void, Void> {
 
         @Override
         protected Void doInBackground(String... params) {
-
-            URL url;
-            String response = "";
-            String data = params[0];
-
-            try {
-                url = new URL("http://18.223.141.72:8000/upload/upload_text/?message=" + data);
-
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setReadTimeout(15000);
-                conn.setConnectTimeout(15000);
-                conn.setRequestMethod("POST");
-                conn.setDoInput(true);
-                conn.setDoOutput(true);
-
-                OutputStream os = conn.getOutputStream();
-                BufferedWriter writer = new BufferedWriter(
-                        new OutputStreamWriter(os, "UTF-8"));
-
-                writer.flush();
-                writer.close();
-                os.close();
-                int responseCode = conn.getResponseCode();
-
-                conn.disconnect();
-//                if (responseCode == HttpsURLConnection.HTTP_OK) {
-//                    String line;
-//                    BufferedReader br=new BufferedReader(new InputStreamReader(conn.getInputStream()));
-//                    while ((line=br.readLine()) != null) {
-//                        response+=line;
-//                    }
-//                }
-//                else {
-//                    response="";
-//                }
-
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-
+            mUploader.uploadText(params[0]);
             return null;
         }
 
@@ -170,42 +119,12 @@ public class MainActivity extends Activity {
 
     volatile private static boolean uploading = false;
 
-    public static class UploadImageTask extends AsyncTask<Byte[], Void, Void> {
-
-        private static final MultipartBody.Builder body_ = new MultipartBody.Builder()
-                .setType(MultipartBody.FORM)
-                .addFormDataPart("Content-Disposition", "form-data; name=\"file\"; filename=\"file.png\"");
-
-        private static final Request.Builder request_ = new Request.Builder()
-                .url("http://18.223.141.72:8000/upload/upload_image/")
-                .addHeader("Content-Type", MultipartBody.FORM.toString())
-                .addHeader("Cache-Control", "no-cache");
-
-        private static final OkHttpClient client = new OkHttpClient();
+    public static class UploadImageTask extends AsyncTask<byte[], Void, Void> {
 
         @Override
-        protected Void doInBackground(final Byte[]... params) {
+        protected Void doInBackground(final byte[]... params) {
 
-            byte[] bytes = new byte[params[0].length];
-            for (int i = 0; i < bytes.length; ++i) {
-                bytes[i] = params[0][i];
-            }
-
-            RequestBody body = body_
-                    .addFormDataPart("file", "file.jpg",
-                            RequestBody.create(MediaType.parse("image/jpg"), bytes))
-                    .build();
-
-            Request request = request_
-                    .put(body)
-                    .build();
-
-            try {
-                Response response = client.newCall(request).execute();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-
+            mUploader.uploadImage(params[0]);
             return null;
         }
 
@@ -303,7 +222,6 @@ public class MainActivity extends Activity {
             int value = mFrameId.get();
             if (value % FRAME_UPLOAD_INTERVAL == 0) {
                 if (uploading) {
-                    mTextCaptureService.submitRequestedFrame(data);
                     Log.v("TAG " + Integer.toString(value), "Already uploading!");
                 } else {
                     uploading = true;
@@ -312,19 +230,16 @@ public class MainActivity extends Activity {
                     Log.v("TAG " + Integer.toString(value), time.toString());
 
                     YuvImage yuvImage = new YuvImage(data, ImageFormat.NV21,
-                            mCameraPreviewSize.width, mCameraPreviewSize.height, null);
+                                                     mCameraPreviewSize.width, mCameraPreviewSize.height, null
+                    );
                     ByteArrayOutputStream os = new ByteArrayOutputStream();
                     yuvImage.compressToJpeg(
                             new Rect(0, 0, mCameraPreviewSize.width, mCameraPreviewSize.height),
-                            40, os);
+                            40, os
+                    );
                     final byte[] jpegByteArray = os.toByteArray();
-                    Byte[] bytes = new Byte[jpegByteArray.length];
-                    int i = 0;
-                    // Associating Byte array values with bytes. (byte[] to Byte[])
-                    for (byte b : jpegByteArray)
-                        bytes[i++] = b;  // Autoboxing.
 
-                    new UploadImageTask().execute(bytes);
+                    new UploadImageTask().execute(jpegByteArray);
                 }
             }
 
@@ -492,12 +407,12 @@ public class MainActivity extends Activity {
             // Troubleshooting for the developer
             Log.e(getString(R.string.app_name), "Error loading ABBYY RTR SDK:", e);
             showStartupError("Could not load some required resource files. Make sure to configure " +
-                    "'assets' directory in your application and specify correct 'license file name'. See logcat for details.");
+                                     "'assets' directory in your application and specify correct 'license file name'. See logcat for details.");
         } catch (Engine.LicenseException e) {
             // Troubleshooting for the developer
             Log.e(getString(R.string.app_name), "Error loading ABBYY RTR SDK:", e);
             showStartupError("License not valid. Make sure you have a valid license file in the " +
-                    "'assets' directory and specify correct 'license file name' and 'application mFrameId'. See logcat for details.");
+                                     "'assets' directory and specify correct 'license file name' and 'application mFrameId'. See logcat for details.");
         } catch (Throwable e) {
             // Troubleshooting for the developer
             Log.e(getString(R.string.app_name), "Error loading ABBYY RTR SDK:", e);
