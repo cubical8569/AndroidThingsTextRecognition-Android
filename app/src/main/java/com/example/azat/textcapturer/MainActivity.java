@@ -58,7 +58,7 @@ public class MainActivity extends Activity {
     private static final String LICENSE_FILE_NAME = "AbbyyRtrSdk.license";
 
     // Configuring sending frames to server
-    private static final int FRAME_UPLOAD_INTERVAL = 1;
+    private static final int FRAME_UPLOAD_INTERVAL = 3;
     private AtomicInteger mFrameId = new AtomicInteger(0);  // number of frame mod FRAME_UPLOAD_INTERVAL
 
     ///////////////////////////////////////////////////////////////////////////////
@@ -113,105 +113,77 @@ public class MainActivity extends Activity {
     private static final String BUTTON_TEXT_STOP = "Stop";
     private static final String BUTTON_TEXT_STARTING = "Starting...";
 
+    private final static Uploader mUploader = new Uploader();
+
     private IRecognitionService.ResultStabilityStatus previousResultStatus = null;
 
     public static class UploadTextTask extends AsyncTask<String, Void, Void> {
 
         @Override
         protected Void doInBackground(String... params) {
+//
+//            URL url;
+//            String response = "";
+//            String data = params[0];
+//
+//            try {
+//                url = new URL("http://3.16.206.22:8000/upload/upload_text/?message=" + data);
+//
+//                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+//                conn.setReadTimeout(15000);
+//                conn.setConnectTimeout(15000);
+//                conn.setRequestMethod("POST");
+//                conn.setDoInput(true);
+//                conn.setDoOutput(true);
+//
+//                OutputStream os = conn.getOutputStream();
+//                BufferedWriter writer = new BufferedWriter(
+//                        new OutputStreamWriter(os, "UTF-8"));
+//
+//                writer.flush();
+//                writer.close();
+//                os.close();
+//                conn.getResponseCode();
+//
+//                conn.disconnect();
+//
+//            } catch (Exception e) {
+//                e.printStackTrace();
+//            }
 
-            URL url;
-            String response = "";
-            String data = params[0];
-
-            try {
-                url = new URL("http://18.223.141.72:8000/upload/upload_text/?message=" + data);
-
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setReadTimeout(15000);
-                conn.setConnectTimeout(15000);
-                conn.setRequestMethod("POST");
-                conn.setDoInput(true);
-                conn.setDoOutput(true);
-
-                OutputStream os = conn.getOutputStream();
-                BufferedWriter writer = new BufferedWriter(
-                        new OutputStreamWriter(os, "UTF-8"));
-
-                writer.flush();
-                writer.close();
-                os.close();
-                int responseCode = conn.getResponseCode();
-
-                conn.disconnect();
-//                if (responseCode == HttpsURLConnection.HTTP_OK) {
-//                    String line;
-//                    BufferedReader br=new BufferedReader(new InputStreamReader(conn.getInputStream()));
-//                    while ((line=br.readLine()) != null) {
-//                        response+=line;
-//                    }
-//                }
-//                else {
-//                    response="";
-//                }
-
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
+            mUploader.uploadText(params[0]);
 
             return null;
         }
 
         @Override
         protected void onPostExecute(Void aVoid) {
-            Log.v("TAG", "Uploaded");
         }
     }
 
     volatile private static boolean uploading = false;
 
-    public static class UploadImageTask extends AsyncTask<Byte[], Void, Void> {
+    public static class UploadImageTask extends AsyncTask<byte[], Void, Void> {
 
         private static final MultipartBody.Builder body_ = new MultipartBody.Builder()
                 .setType(MultipartBody.FORM)
                 .addFormDataPart("Content-Disposition", "form-data; name=\"file\"; filename=\"file.png\"");
 
         private static final Request.Builder request_ = new Request.Builder()
-                .url("http://18.223.141.72:8000/upload/upload_image/")
+                .url("http://3.16.206.22:8000/upload/upload_image/")
                 .addHeader("Content-Type", MultipartBody.FORM.toString())
                 .addHeader("Cache-Control", "no-cache");
 
         private static final OkHttpClient client = new OkHttpClient();
 
         @Override
-        protected Void doInBackground(final Byte[]... params) {
-
-            byte[] bytes = new byte[params[0].length];
-            for (int i = 0; i < bytes.length; ++i) {
-                bytes[i] = params[0][i];
-            }
-
-            RequestBody body = body_
-                    .addFormDataPart("file", "file.jpg",
-                            RequestBody.create(MediaType.parse("image/jpg"), bytes))
-                    .build();
-
-            Request request = request_
-                    .put(body)
-                    .build();
-
-            try {
-                Response response = client.newCall(request).execute();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-
+        protected Void doInBackground(final byte[]... params) {
+            mUploader.uploadImage(params[0]);
             return null;
         }
 
         @Override
         protected void onPostExecute(Void aVoid) {
-            Log.v("TAG", LocalDateTime.now().toString() + " Uploaded");
             uploading = false;
         }
     }
@@ -254,7 +226,7 @@ public class MainActivity extends Activity {
 
                 // Show result to the user. In this sample we whiten screen background and play
                 // the same sound that is used for pressing buttons
-                // mSurfaceViewWithOverlay.setFillBackground( true );
+                mSurfaceViewWithOverlay.setFillBackground( true );
                 StringBuilder sb = new StringBuilder();
                 for (ITextCaptureService.TextLine line : lines) {
                     sb.append(line.Text + "\n");
@@ -304,7 +276,6 @@ public class MainActivity extends Activity {
             if (value % FRAME_UPLOAD_INTERVAL == 0) {
                 if (uploading) {
                     mTextCaptureService.submitRequestedFrame(data);
-                    Log.v("TAG " + Integer.toString(value), "Already uploading!");
                 } else {
                     uploading = true;
 
@@ -312,19 +283,16 @@ public class MainActivity extends Activity {
                     Log.v("TAG " + Integer.toString(value), time.toString());
 
                     YuvImage yuvImage = new YuvImage(data, ImageFormat.NV21,
-                            mCameraPreviewSize.width, mCameraPreviewSize.height, null);
+                            mCameraPreviewSize.width, mCameraPreviewSize.height, null
+                    );
                     ByteArrayOutputStream os = new ByteArrayOutputStream();
                     yuvImage.compressToJpeg(
                             new Rect(0, 0, mCameraPreviewSize.width, mCameraPreviewSize.height),
-                            40, os);
+                            40, os
+                    );
                     final byte[] jpegByteArray = os.toByteArray();
-                    Byte[] bytes = new Byte[jpegByteArray.length];
-                    int i = 0;
-                    // Associating Byte array values with bytes. (byte[] to Byte[])
-                    for (byte b : jpegByteArray)
-                        bytes[i++] = b;  // Autoboxing.
 
-                    new UploadImageTask().execute(bytes);
+                    new UploadImageTask().execute(jpegByteArray);
                 }
             }
 
@@ -682,6 +650,7 @@ public class MainActivity extends Activity {
             String name = LANGUAGES[i].name();
             adapter.add(name);
         }
+
         languageSpinner.setAdapter(adapter);
         languageSpinner.setSelection(0);
 
