@@ -109,9 +109,6 @@ public class MainActivity extends Activity {
             return null;
         }
 
-        @Override
-        protected void onPostExecute(Void aVoid) {
-        }
     }
 
     public static class UploadImageTask extends AsyncTask<byte[], Void, Void> {
@@ -176,9 +173,8 @@ public class MainActivity extends Activity {
 
         @Override
         public void onRequestLatestFrame(byte[] buffer) {
-            // The service asks to fill the buffer with image data for the latest frame in NV21 format.
-            // Delegate this task to the camera. When the buffer is filled we will receive
-            // Camera.PreviewCallback.onPreviewFrame (see below)
+            // Метод хочет, чтобы мы заполнили полученный буфер новым кадром.
+            // Мы делегируем это камере.
             mCamera.addCallbackBuffer(buffer);
         }
 
@@ -186,35 +182,29 @@ public class MainActivity extends Activity {
         public void onFrameProcessed(
                 ITextCaptureService.TextLine[] lines,
                 ITextCaptureService.ResultStabilityStatus resultStatus, ITextCaptureService.Warning warning) {
-            // Frame has been processed. Here we process recognition results. In this sample we
-            // stop when we get stable result. This callback may continue being called for some time
-            // even after the service has been stopped while the calls queued to this thread (UI thread)
-            // are being processed. Just ignore these calls:
+            // Здесь мы получаем результаты обработки изображения, то есть текст
 
             if (resultStatus.ordinal() >= 3) {
-                // The result is stable enough to show something to the user
+                // Результаты достаточно стабильны, чтобы показать их пользователю
                 mSurfaceViewWithOverlay.setLines(lines, resultStatus);
             } else {
-                // The result is not stable. Show nothing
+                // Нестабильный результат, лучше ничего не показывать
                 mSurfaceViewWithOverlay.setLines(null, ITextCaptureService.ResultStabilityStatus.NotReady);
             }
 
-            // Show the warning from the service if any. The warnings are intended for the user
-            // to take some action (zooming in, checking recognition language, etc.)
+            // Показываем warnings
             mWarningTextView.setText(warning != null ? warning.name() : "");
 
             if (resultStatus == ITextCaptureService.ResultStabilityStatus.Stable
                     && previousResultStatus != ITextCaptureService.ResultStabilityStatus.Stable) {
-                // Stable result has been reached. Stop the service
 
-                // Show result to the user. In this sample we whiten screen background and play
-                // the same sound that is used for pressing buttons
-                mSurfaceViewWithOverlay.setFillBackground(true);
+                // mSurfaceViewWithOverlay.setFillBackground(false);
                 StringBuilder sb = new StringBuilder();
                 for (ITextCaptureService.TextLine line : lines) {
                     sb.append(line.Text + "\n");
                 }
 
+                // Отправляем результат на сервер
                 new UploadTextTask().execute(sb.toString());
             }
 
@@ -247,20 +237,19 @@ public class MainActivity extends Activity {
         }
     };
 
-    // This callback will be used to obtain frames from the camera
     private Camera.PreviewCallback cameraPreviewCallback = new Camera.PreviewCallback() {
         @Override
         public void onPreviewFrame(byte[] data, Camera camera) {
-            // The buffer that we have given to the camera in ITextCaptureService.Callback.onRequestLatestFrame
-            // above have been filled. Send it back to the Text Capture Service
-
-            // If it's time send frame to a server
+            // Если пришло время отправлять (если уже ничего не отправляется)
             if (!mIsUploading) {
                 mIsUploading = true;
 
+                // Отправляем на сервер
                 new UploadImageTask(mCameraPreviewSize.width, mCameraPreviewSize.height).execute(data);
             }
 
+
+            // Заполняем полученный ранее буфер
             mTextCaptureService.submitRequestedFrame(data);
         }
     };

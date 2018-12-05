@@ -1,6 +1,6 @@
 /.idea
 /abbyy-rtr-sdk-1.0
-# /app/assets
+/app/assets
 *.iml
 .gradle
 /local.properties
