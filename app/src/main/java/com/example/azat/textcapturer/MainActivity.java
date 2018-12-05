@@ -28,9 +28,7 @@ import android.widget.Spinner;
 import android.widget.TextView;
 
 import java.io.ByteArrayOutputStream;
-import java.time.LocalDateTime;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.IntUnaryOperator;
+import java.io.IOException;
 
 import com.abbyy.mobile.rtr.Engine;
 import com.abbyy.mobile.rtr.IRecognitionService;
@@ -40,12 +38,10 @@ import com.abbyy.mobile.rtr.Language;
 @SuppressWarnings("deprecation")
 public class MainActivity extends Activity {
 
+    private static final String TAG = "MainActivity";
+
     // Licensing
     private static final String LICENSE_FILE_NAME = "AbbyyRtrSdk.license";
-
-    // Configuring sending frames to server
-    private static final int FRAME_UPLOAD_INTERVAL = 3;
-    private AtomicInteger mFrameId = new AtomicInteger(0);  // number of frame mod FRAME_UPLOAD_INTERVAL
 
     ///////////////////////////////////////////////////////////////////////////////
     // Some application settings that can be changed to modify application behavior:
@@ -103,6 +99,8 @@ public class MainActivity extends Activity {
 
     private IRecognitionService.ResultStabilityStatus previousResultStatus = null;
 
+    private static boolean mIsUploading = false;
+
     public static class UploadTextTask extends AsyncTask<String, Void, Void> {
 
         @Override
@@ -116,19 +114,60 @@ public class MainActivity extends Activity {
         }
     }
 
-    volatile private static boolean uploading = false;
-
     public static class UploadImageTask extends AsyncTask<byte[], Void, Void> {
 
-        @Override
-        protected Void doInBackground(final byte[]... params) {
-            mUploader.uploadImage(params[0]);
-            return null;
+        private int mCameraPreviewWidth;
+        private int mCameraPreviewHeight;
+
+        public UploadImageTask(int width, int height) {
+            mCameraPreviewWidth = width;
+            mCameraPreviewHeight = height;
         }
 
         @Override
+        protected Void doInBackground(final byte[]... params) {
+            byte[] jpegBytes = convertToJpegBytes(params[0]);
+            if (jpegBytes != null) {
+                mUploader.uploadImage(jpegBytes);
+            }
+            return null;
+        }
+
+        private byte[] convertToJpegBytes(byte[] rawBytes) {
+            YuvImage yuvImage = new YuvImage(
+                    rawBytes,
+                    ImageFormat.NV21,
+                    mCameraPreviewWidth,
+                    mCameraPreviewHeight,
+                    null
+            );
+
+            try (ByteArrayOutputStream os = new ByteArrayOutputStream()) {
+                yuvImage.compressToJpeg(
+                        new Rect(0, 0, mCameraPreviewWidth, mCameraPreviewHeight),
+                        40,
+                        os
+                );
+                return os.toByteArray();
+            } catch (IOException e) {
+                Log.d(TAG, "compress error");
+                return null;
+            }
+        }
+
+        private static long startTime;
+        private static float count = 0;
+
+        @Override
         protected void onPostExecute(Void aVoid) {
-            uploading = false;
+            if (startTime == 0) {
+                startTime = System.currentTimeMillis();
+            } else {
+                ++count;
+                Log.d("FRAME_RATE", " " + count * 1000 / (float) (System.currentTimeMillis() - startTime));
+            }
+
+            mIsUploading = false;
         }
     }
 
@@ -170,7 +209,7 @@ public class MainActivity extends Activity {
 
                 // Show result to the user. In this sample we whiten screen background and play
                 // the same sound that is used for pressing buttons
-                mSurfaceViewWithOverlay.setFillBackground( true );
+                mSurfaceViewWithOverlay.setFillBackground(true);
                 StringBuilder sb = new StringBuilder();
                 for (ITextCaptureService.TextLine line : lines) {
                     sb.append(line.Text + "\n");
@@ -216,37 +255,11 @@ public class MainActivity extends Activity {
             // above have been filled. Send it back to the Text Capture Service
 
             // If it's time send frame to a server
-            int value = mFrameId.get();
-            if (value % FRAME_UPLOAD_INTERVAL == 0) {
-                if (uploading) {
-                    mTextCaptureService.submitRequestedFrame(data);
-                } else {
-                    uploading = true;
+            if (!mIsUploading) {
+                mIsUploading = true;
 
-                    LocalDateTime time = LocalDateTime.now();
-                    Log.v("TAG " + Integer.toString(value), time.toString());
-
-                    YuvImage yuvImage = new YuvImage(data, ImageFormat.NV21,
-                            mCameraPreviewSize.width, mCameraPreviewSize.height, null
-                    );
-
-                    ByteArrayOutputStream os = new ByteArrayOutputStream();
-                    yuvImage.compressToJpeg(
-                            new Rect(0, 0, mCameraPreviewSize.width, mCameraPreviewSize.height),
-                            40, os
-                    );
-                    final byte[] jpegByteArray = os.toByteArray();
-
-                    new UploadImageTask().execute(jpegByteArray);
-                }
+                new UploadImageTask(mCameraPreviewSize.width, mCameraPreviewSize.height).execute(data);
             }
-
-            mFrameId.updateAndGet(new IntUnaryOperator() {
-                @Override
-                public int applyAsInt(int i) {
-                    return (i + 1);
-                }
-            });
 
             mTextCaptureService.submitRequestedFrame(data);
         }
