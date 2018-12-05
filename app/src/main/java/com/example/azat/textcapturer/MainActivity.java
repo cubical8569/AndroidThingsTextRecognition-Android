@@ -27,29 +27,15 @@ import android.widget.RelativeLayout;
 import android.widget.Spinner;
 import android.widget.TextView;
 
+import java.io.ByteArrayOutputStream;
 import java.time.LocalDateTime;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.IntUnaryOperator;
 
 import com.abbyy.mobile.rtr.Engine;
 import com.abbyy.mobile.rtr.IRecognitionService;
 import com.abbyy.mobile.rtr.ITextCaptureService;
 import com.abbyy.mobile.rtr.Language;
-
-import java.io.BufferedWriter;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.io.OutputStreamWriter;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.IntUnaryOperator;
-
-import okhttp3.MediaType;
-import okhttp3.MultipartBody;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.RequestBody;
-import okhttp3.Response;
 
 @SuppressWarnings("deprecation")
 public class MainActivity extends Activity {
@@ -121,38 +107,7 @@ public class MainActivity extends Activity {
 
         @Override
         protected Void doInBackground(String... params) {
-//
-//            URL url;
-//            String response = "";
-//            String data = params[0];
-//
-//            try {
-//                url = new URL("http://3.16.206.22:8000/upload/upload_text/?message=" + data);
-//
-//                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-//                conn.setReadTimeout(15000);
-//                conn.setConnectTimeout(15000);
-//                conn.setRequestMethod("POST");
-//                conn.setDoInput(true);
-//                conn.setDoOutput(true);
-//
-//                OutputStream os = conn.getOutputStream();
-//                BufferedWriter writer = new BufferedWriter(
-//                        new OutputStreamWriter(os, "UTF-8"));
-//
-//                writer.flush();
-//                writer.close();
-//                os.close();
-//                conn.getResponseCode();
-//
-//                conn.disconnect();
-//
-//            } catch (Exception e) {
-//                e.printStackTrace();
-//            }
-
             mUploader.uploadText(params[0]);
-
             return null;
         }
 
@@ -164,17 +119,6 @@ public class MainActivity extends Activity {
     volatile private static boolean uploading = false;
 
     public static class UploadImageTask extends AsyncTask<byte[], Void, Void> {
-
-        private static final MultipartBody.Builder body_ = new MultipartBody.Builder()
-                .setType(MultipartBody.FORM)
-                .addFormDataPart("Content-Disposition", "form-data; name=\"file\"; filename=\"file.png\"");
-
-        private static final Request.Builder request_ = new Request.Builder()
-                .url("http://3.16.206.22:8000/upload/upload_image/")
-                .addHeader("Content-Type", MultipartBody.FORM.toString())
-                .addHeader("Cache-Control", "no-cache");
-
-        private static final OkHttpClient client = new OkHttpClient();
 
         @Override
         protected Void doInBackground(final byte[]... params) {
@@ -285,6 +229,7 @@ public class MainActivity extends Activity {
                     YuvImage yuvImage = new YuvImage(data, ImageFormat.NV21,
                             mCameraPreviewSize.width, mCameraPreviewSize.height, null
                     );
+
                     ByteArrayOutputStream os = new ByteArrayOutputStream();
                     yuvImage.compressToJpeg(
                             new Rect(0, 0, mCameraPreviewSize.width, mCameraPreviewSize.height),
@@ -460,12 +405,12 @@ public class MainActivity extends Activity {
             // Troubleshooting for the developer
             Log.e(getString(R.string.app_name), "Error loading ABBYY RTR SDK:", e);
             showStartupError("Could not load some required resource files. Make sure to configure " +
-                    "'assets' directory in your application and specify correct 'license file name'. See logcat for details.");
+                                     "'assets' directory in your application and specify correct 'license file name'. See logcat for details.");
         } catch (Engine.LicenseException e) {
             // Troubleshooting for the developer
             Log.e(getString(R.string.app_name), "Error loading ABBYY RTR SDK:", e);
             showStartupError("License not valid. Make sure you have a valid license file in the " +
-                    "'assets' directory and specify correct 'license file name' and 'application mFrameId'. See logcat for details.");
+                                     "'assets' directory and specify correct 'license file name' and 'application mFrameId'. See logcat for details.");
         } catch (Throwable e) {
             // Troubleshooting for the developer
             Log.e(getString(R.string.app_name), "Error loading ABBYY RTR SDK:", e);
